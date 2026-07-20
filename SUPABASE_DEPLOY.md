@@ -34,7 +34,7 @@ supabase secrets set VAPID_PRIVATE_KEY="private-key"
 supabase secrets set VAPID_SUBJECT="mailto:your-email@example.com"
 ```
 
-Supabase provides `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to Edge Functions automatically in most projects. If your project uses only new secret-key names, add `SUPABASE_SERVICE_ROLE_KEY` manually from Settings -> API.
+Supabase provides `SUPABASE_URL` and `SUPABASE_SECRET_KEYS` to Edge Functions automatically. Do not create secrets with the `SUPABASE_` prefix manually; Supabase reserves that prefix.
 
 ## 4. Deploy Edge Functions
 
@@ -43,8 +43,8 @@ Install and login to Supabase CLI, then link the project:
 ```bash
 supabase login
 supabase link --project-ref your-project-ref
-supabase functions deploy send-push
-supabase functions deploy service-maintenance
+supabase functions deploy send-push --no-verify-jwt
+supabase functions deploy service-maintenance --no-verify-jwt
 ```
 
 ## 5. Create the schedule job
@@ -53,6 +53,14 @@ In Supabase Dashboard -> Integrations -> Cron, create a job that calls:
 
 ```text
 https://your-project-ref.supabase.co/functions/v1/service-maintenance
+```
+
+Add headers with your secret key from Settings -> API Keys:
+
+```text
+Authorization: Bearer your-secret-key
+apikey: your-secret-key
+Content-Type: application/json
 ```
 
 Recommended schedule:

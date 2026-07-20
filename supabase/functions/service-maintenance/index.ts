@@ -1,5 +1,5 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
-import { adminClient, sendPushToAll } from '../_shared/push.ts';
+import { adminClient, isAuthorizedRequest, sendPushToAll } from '../_shared/push.ts';
 
 const dayMs = 24 * 60 * 60 * 1000;
 
@@ -14,7 +14,11 @@ const addDays = (date: Date, days: number) => {
   return next;
 };
 
-serve(async () => {
+serve(async (request) => {
+  if (!isAuthorizedRequest(request)) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
   const now = new Date();
 
   const { data: services, error } = await adminClient
