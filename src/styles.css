@@ -1,0 +1,501 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap');
+
+:root {
+  font-family: 'Manrope', sans-serif;
+  color: #ecf3ff;
+  background:
+    radial-gradient(circle at top, rgba(87, 171, 255, 0.28), transparent 30%),
+    linear-gradient(180deg, #08111f 0%, #050814 100%);
+  line-height: 1.5;
+  font-weight: 400;
+  color-scheme: dark;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.shell,
+.desktop-blocker {
+  min-height: 100vh;
+  padding: 20px 16px calc(28px + env(safe-area-inset-bottom));
+}
+
+.shell {
+  display: grid;
+  gap: 16px;
+  max-width: 430px;
+  margin: 0 auto;
+}
+
+.hero,
+.panel,
+.service-card,
+.hero-card,
+.role-card,
+.mini-card,
+.desktop-card {
+  backdrop-filter: blur(18px);
+  background: rgba(9, 17, 31, 0.78);
+  border: 1px solid rgba(173, 197, 255, 0.14);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.24);
+}
+
+.hero {
+  border-radius: 28px;
+  padding: 20px;
+  display: grid;
+  gap: 16px;
+}
+
+.eyebrow,
+.badge {
+  display: inline-flex;
+  width: fit-content;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(106, 180, 255, 0.12);
+  color: #a7d3ff;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-family: 'Space Grotesk', sans-serif;
+  letter-spacing: -0.02em;
+}
+
+h1 {
+  font-size: clamp(2rem, 7vw, 2.7rem);
+  line-height: 0.95;
+  margin-top: 10px;
+}
+
+h2 {
+  font-size: 1.35rem;
+}
+
+h3 {
+  font-size: 1.05rem;
+}
+
+p {
+  margin: 0;
+}
+
+.hero-card {
+  border-radius: 22px;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.hero-card span,
+.muted,
+.mini-card p {
+  color: #9bb0d1;
+}
+
+.hero-card strong {
+  font-size: 0.95rem;
+}
+
+.mode-switcher {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  padding: 6px;
+  border-radius: 18px;
+  background: rgba(12, 22, 39, 0.9);
+  border: 1px solid rgba(173, 197, 255, 0.14);
+}
+
+.mode-switcher button,
+.submit-button,
+.vote-button,
+.secondary-button,
+.danger-button {
+  border: 0;
+  border-radius: 14px;
+  transition: transform 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+
+.mode-switcher button {
+  padding: 12px;
+  background: transparent;
+  color: #9bb0d1;
+  font-weight: 700;
+}
+
+.mode-switcher .active {
+  background: linear-gradient(135deg, #55a6ff, #6b7dff);
+  color: #ffffff;
+}
+
+.service-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.service-card {
+  border-radius: 22px;
+  padding: 16px;
+  text-align: left;
+  color: inherit;
+  display: grid;
+  gap: 8px;
+}
+
+.service-card span,
+.service-card p,
+.service-card small {
+  color: #9bb0d1;
+}
+
+.service-card strong {
+  font-size: 1.4rem;
+}
+
+.service-card.selected {
+  background: linear-gradient(180deg, rgba(84, 149, 255, 0.34), rgba(9, 17, 31, 0.92));
+  border-color: rgba(112, 177, 255, 0.52);
+}
+
+.panel {
+  border-radius: 28px;
+  padding: 18px;
+  display: grid;
+  gap: 16px;
+}
+
+.panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.time-pill,
+.vote-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(88, 171, 255, 0.12);
+  color: #9fd3ff;
+  font-weight: 700;
+}
+
+.roles-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.role-card {
+  border-radius: 22px;
+  padding: 16px;
+  display: grid;
+  gap: 14px;
+}
+
+.role-title-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.vote-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.vote-button,
+.submit-button,
+.secondary-button,
+.danger-button {
+  padding: 12px 10px;
+  font-weight: 700;
+}
+
+.vote-button {
+  background: rgba(147, 166, 197, 0.1);
+  color: #dbe7ff;
+  display: grid;
+  gap: 4px;
+  min-height: 66px;
+  align-content: center;
+  justify-items: center;
+  text-align: center;
+}
+
+.vote-button strong {
+  display: inline-flex;
+  min-width: 26px;
+  height: 26px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.vote-button.active,
+.submit-button {
+  background: linear-gradient(135deg, #55a6ff, #6b7dff);
+  color: #fff;
+}
+
+.secondary-button {
+  background: rgba(147, 166, 197, 0.12);
+  color: #dbe7ff;
+}
+
+.danger-button {
+  background: rgba(255, 92, 116, 0.14);
+  color: #ffb6c2;
+}
+
+.vote-button:hover,
+.mode-switcher button:hover,
+.submit-button:hover,
+.secondary-button:hover,
+.danger-button:hover {
+  transform: translateY(-1px);
+}
+
+.admin-form {
+  display: grid;
+  gap: 12px;
+}
+
+.admin-form label {
+  display: grid;
+  gap: 8px;
+  color: #c8d6f0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.admin-form input,
+.admin-form select,
+.admin-form textarea,
+.response-editor select,
+.response-editor input,
+.inline-field input {
+  border: 1px solid rgba(173, 197, 255, 0.16);
+  background: rgba(10, 19, 34, 0.88);
+  color: #f4f8ff;
+  border-radius: 16px;
+  padding: 12px 14px;
+}
+
+.admin-form textarea {
+  resize: vertical;
+}
+
+.compact-panel {
+  padding: 14px 16px;
+}
+
+.notification-panel {
+  align-items: start;
+}
+
+.inline-field,
+.checkbox-field {
+  display: grid;
+  gap: 8px;
+  color: #c8d6f0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.field-hint {
+  color: #9bb0d1;
+  font-size: 0.9rem;
+}
+
+.checkbox-field {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+
+.checkbox-field input {
+  width: 20px;
+  height: 20px;
+}
+
+.options-panel {
+  border-top: 1px solid rgba(173, 197, 255, 0.12);
+  padding-top: 16px;
+}
+
+.mini-list {
+  display: grid;
+  gap: 10px;
+}
+
+.mini-card {
+  border-radius: 20px;
+  padding: 14px 16px;
+  display: block;
+}
+
+.mini-card strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.mini-card-content,
+.response-editor {
+  display: grid;
+  gap: 12px;
+}
+
+.admin-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.response-editor {
+  padding-top: 4px;
+}
+
+.response-editor label {
+  display: grid;
+  gap: 8px;
+  color: #c8d6f0;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.admin-role-responses {
+  display: grid;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(173, 197, 255, 0.12);
+}
+
+.count-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.count-row span {
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: rgba(106, 180, 255, 0.12);
+  color: #a7d3ff;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.add-response-row {
+  display: grid;
+  gap: 8px;
+}
+
+.results-list {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(10, 19, 34, 0.58);
+  border: 1px solid rgba(173, 197, 255, 0.12);
+}
+
+.result-group {
+  display: grid;
+  gap: 6px;
+}
+
+.result-group strong {
+  color: #dbe7ff;
+}
+
+.result-group ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.result-group li,
+.result-group p {
+  margin: 0;
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: rgba(147, 166, 197, 0.12);
+  color: #c8d6f0;
+  font-size: 0.86rem;
+}
+
+.desktop-blocker {
+  display: grid;
+  place-items: center;
+}
+
+.desktop-card {
+  max-width: 420px;
+  border-radius: 28px;
+  padding: 24px;
+  display: grid;
+  gap: 14px;
+  text-align: left;
+}
+
+.desktop-card p {
+  color: #9bb0d1;
+}
+
+@media (max-width: 360px) {
+  .service-list,
+  .vote-row {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "VidMitka Розклад",
+  "short_name": "VidMitka",
+  "description": "Мобільний розклад і відповіді для команди служителів.",
+  "theme_color": "#0f172a",
+  "background_color": "#08111f",
+  "display": "standalone",
+  "orientation": "portrait",
+  "start_url": "/",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
