@@ -6,15 +6,18 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "vapid": "web-push generate-vapid-keys"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.110.7",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "vite-plugin-pwa": "^0.21.1"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.1",
-    "vite": "^5.4.8"
+    "vite": "^5.4.8",
+    "web-push": "^3.6.7"
   }
 }

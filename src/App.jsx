@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { isSupabaseConfigured, supabase } from './lib/supabase';
 
 const serviceRolesFallback = ['Камера', 'Звук', 'Медіа'];
 const defaultResponseOptions = ['Можу бути', 'Не можу бути', 'Під питанням'];
-const dayMs = 24 * 60 * 60 * 1000;
 
 const initialServices = [
   {
@@ -13,9 +13,7 @@ const initialServices = [
     note: 'Підготовка команди, звук і трансляція',
     roles: ['Камера', 'Звук', 'Зустрічаючі'],
     isRecurring: true,
-    recurringParentId: 'fri-evening',
-    createdAt: Date.now(),
-    notificationAt: Date.now() + dayMs
+    recurringParentId: 'fri-evening'
   },
   {
     id: 'sun-2026-07-26',
@@ -25,9 +23,7 @@ const initialServices = [
     note: 'Трансляція та молитовна підтримка',
     roles: ['Камера', 'Презентація', 'Медіа'],
     isRecurring: true,
-    recurringParentId: 'sun-main',
-    createdAt: Date.now(),
-    notificationAt: Date.now() + dayMs
+    recurringParentId: 'sun-main'
   }
 ];
 
@@ -60,8 +56,6 @@ const addDays = (date, days) => {
   return next;
 };
 
-const getNotificationAt = (isRecurring, createdAt = Date.now()) => createdAt + (isRecurring ? dayMs : 0);
-
 const formatServiceDate = (date) => {
   const [year, month, day] = date.split('-').map(Number);
   const value = new Date(year, month - 1, day);
@@ -85,6 +79,32 @@ const normalizeLines = (text, fallback) => {
 const sortServices = (items) =>
   [...items].sort((first, second) => `${first.date}T${first.time}`.localeCompare(`${second.date}T${second.time}`));
 
+const toTimeInput = (time) => time.slice(0, 5);
+
+const fromServiceRow = (row) => ({
+  id: row.id,
+  date: row.service_date,
+  time: toTimeInput(row.service_time),
+  title: row.title,
+  note: row.note,
+  roles: row.roles ?? [],
+  isRecurring: row.is_recurring,
+  recurringParentId: row.recurring_parent_id
+});
+
+const toServicePayload = (service) => ({
+  ...(service.id ? { id: service.id } : {}),
+  service_date: service.date,
+  service_time: service.time,
+  title: service.title,
+  note: service.note,
+  roles: service.roles,
+  is_recurring: service.isRecurring,
+  recurring_parent_id: service.recurringParentId,
+  reminder_at: service.isRecurring ? null : new Date().toISOString(),
+  reminder_sent_at: null
+});
+
 const createNextRecurringService = (service, now) => {
   let nextStart = addDays(getServiceStart(service), 7);
 
@@ -99,9 +119,7 @@ const createNextRecurringService = (service, now) => {
     ...service,
     id: `${parentId}-${date}-${service.time}`,
     date,
-    recurringParentId: parentId,
-    createdAt: now.getTime(),
-    notificationAt: getNotificationAt(true, now.getTime())
+    recurringParentId: parentId
   };
 };
 
@@ -140,17 +158,42 @@ const cleanupServices = (items, currentResponses, now = new Date()) => {
 const getResponseCounts = (roleResponses = {}, options) =>
   options.map((option) => ({
     option,
-    count: Object.values(roleResponses).filter((value) => value === option).length
+    count: Object.values(roleResponses).filter((entry) => getResponseValue(entry) === option).length
   }));
+
+const getResponseValue = (entry) => {
+  if (!entry) return '';
+  return typeof entry === 'string' ? entry : entry.value;
+};
+const getResponseName = (key, entry) => {
+  if (!entry) return key;
+  return typeof entry === 'string' ? key : entry.displayName;
+};
 
 const getGroupedResponses = (roleResponses = {}, options) =>
   options.map((option) => ({
     option,
     names: Object.entries(roleResponses)
-      .filter(([, value]) => value === option)
-      .map(([name]) => name)
+      .filter(([, entry]) => getResponseValue(entry) === option)
+      .map(([key, entry]) => getResponseName(key, entry))
       .sort((first, second) => first.localeCompare(second, 'uk'))
   }));
+
+const buildResponseMap = (rows) => {
+  const map = {};
+
+  rows.forEach((row) => {
+    map[row.service_id] ??= {};
+    map[row.service_id][row.role] ??= {};
+    map[row.service_id][row.role][row.user_id] = {
+      displayName: row.display_name,
+      value: row.value,
+      userId: row.user_id
+    };
+  });
+
+  return map;
+};
 
 function App() {
   const [isDesktop, setIsDesktop] = useState(false);
@@ -164,17 +207,96 @@ function App() {
   const [responseOptionsText, setResponseOptionsText] = useState(defaultResponseOptions.join('\n'));
   const [adminDrafts, setAdminDrafts] = useState({});
   const [expandedResults, setExpandedResults] = useState({});
-  const [notificationPermission, setNotificationPermission] = useState(() => {
-    if (typeof Notification === 'undefined') return 'unsupported';
-    return Notification.permission;
-  });
-  const [notifiedServiceIds, setNotifiedServiceIds] = useState(() => new Set(initialServices.map((service) => service.id)));
+  const [userId, setUserId] = useState('');
+  const [remoteStatus, setRemoteStatus] = useState(isSupabaseConfigured ? 'Підключення до Supabase...' : '');
+  const [pushStatus, setPushStatus] = useState('');
   const responsesRef = useRef(responses);
   const participantNameRef = useRef('');
 
   useEffect(() => {
     responsesRef.current = responses;
   }, [responses]);
+
+  const loadRemoteData = async () => {
+    if (!supabase) return;
+
+    const [
+      servicesResult,
+      optionsResult,
+      responsesResult
+    ] = await Promise.all([
+      supabase.from('services').select('*').order('service_date').order('service_time'),
+      supabase.from('response_options').select('*').order('position'),
+      supabase.from('responses').select('*')
+    ]);
+
+    if (servicesResult.error || optionsResult.error || responsesResult.error) {
+      throw servicesResult.error ?? optionsResult.error ?? responsesResult.error;
+    }
+
+    const nextServices = servicesResult.data.map(fromServiceRow);
+    const nextOptions = optionsResult.data.map((option) => option.label);
+
+    setServices(nextServices);
+    setSelectedServiceId((currentSelectedId) => {
+      if (nextServices.some((service) => service.id === currentSelectedId)) return currentSelectedId;
+      return nextServices[0]?.id ?? '';
+    });
+    setResponseOptions(nextOptions.length ? nextOptions : defaultResponseOptions);
+    setResponseOptionsText((nextOptions.length ? nextOptions : defaultResponseOptions).join('\n'));
+    setResponses(buildResponseMap(responsesResult.data));
+  };
+
+  useEffect(() => {
+    if (!supabase) return undefined;
+
+    let active = true;
+
+    const bootSupabase = async () => {
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        let session = sessionData.session;
+
+        if (!session) {
+          const { data, error } = await supabase.auth.signInAnonymously();
+          if (error) throw error;
+          session = data.session;
+        }
+
+        if (!active || !session?.user) return;
+
+        setUserId(session.user.id);
+        setRemoteStatus('Supabase підключено');
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('display_name')
+          .eq('user_id', session.user.id)
+          .maybeSingle();
+
+        if (profile?.display_name) {
+          setParticipantName(profile.display_name);
+          participantNameRef.current = profile.display_name;
+        }
+        await loadRemoteData();
+      } catch (error) {
+        setRemoteStatus(`Помилка Supabase: ${error.message}`);
+      }
+    };
+
+    bootSupabase();
+
+    const channel = supabase
+      .channel('vidmitka-db')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'services' }, () => loadRemoteData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'response_options' }, () => loadRemoteData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'responses' }, () => loadRemoteData())
+      .subscribe();
+
+    return () => {
+      active = false;
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   useEffect(() => {
     const media = window.matchMedia('(min-width: 768px)');
@@ -185,6 +307,8 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (supabase) return undefined;
+
     const runCleanup = () => {
       setServices((currentServices) => {
         const cleaned = cleanupServices(currentServices, responsesRef.current);
@@ -202,32 +326,6 @@ function App() {
     return () => window.clearInterval(timer);
   }, []);
 
-  useEffect(() => {
-    if (notificationPermission !== 'granted') return undefined;
-
-    const checkNotifications = () => {
-      const now = Date.now();
-      const dueServices = services.filter((service) => (
-        service.notificationAt &&
-        service.notificationAt <= now &&
-        !notifiedServiceIds.has(service.id)
-      ));
-
-      if (!dueServices.length) return;
-
-      dueServices.forEach((service) => showServiceNotification(service));
-      setNotifiedServiceIds((current) => {
-        const next = new Set(current);
-        dueServices.forEach((service) => next.add(service.id));
-        return next;
-      });
-    };
-
-    checkNotifications();
-    const timer = window.setInterval(checkNotifications, 60 * 1000);
-    return () => window.clearInterval(timer);
-  }, [notificationPermission, notifiedServiceIds, services]);
-
   const selectedService = useMemo(
     () => services.find((service) => service.id === selectedServiceId) ?? services[0],
     [selectedServiceId, services]
@@ -236,7 +334,19 @@ function App() {
   const serviceResponses = selectedService ? responses[selectedService.id] ?? {} : {};
   const isEditing = Boolean(form.id);
   const normalizedParticipantName = participantName.trim();
-  const canVote = Boolean(normalizedParticipantName);
+  const canVote = Boolean(normalizedParticipantName && (!supabase || userId));
+
+  const upsertProfile = async (displayName) => {
+    if (!supabase || !userId || !displayName) return;
+
+    await supabase
+      .from('profiles')
+      .upsert({
+        user_id: userId,
+        display_name: displayName,
+        updated_at: new Date().toISOString()
+      });
+  };
 
   const renameParticipantInResponses = (previousName, nextName) => {
     if (!previousName || !nextName || previousName === nextName) return;
@@ -273,11 +383,32 @@ function App() {
     if (nextName) {
       renameParticipantInResponses(previousName, nextName);
       participantNameRef.current = nextName;
+      upsertProfile(nextName);
     }
   };
 
-  const handleVote = (role, value) => {
+  const handleVote = async (role, value) => {
     if (!selectedService || !canVote) return;
+
+    if (supabase) {
+      const { error } = await supabase
+        .from('responses')
+        .upsert({
+          service_id: selectedService.id,
+          role,
+          user_id: userId,
+          display_name: normalizedParticipantName,
+          value,
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'service_id,role,user_id'
+        });
+
+      if (error) {
+        setRemoteStatus(`Помилка збереження відповіді: ${error.message}`);
+        return;
+      }
+    }
 
     setResponses((current) => ({
       ...current,
@@ -285,43 +416,67 @@ function App() {
         ...(current[selectedService.id] ?? {}),
         [role]: {
           ...((current[selectedService.id] ?? {})[role] ?? {}),
-          [normalizedParticipantName]: value
+          [supabase ? userId : normalizedParticipantName]: supabase
+            ? { displayName: normalizedParticipantName, value, userId }
+            : value
         }
       }
     }));
   };
 
-  const requestNotifications = async () => {
-    if (typeof Notification === 'undefined') {
-      setNotificationPermission('unsupported');
+  const urlBase64ToUint8Array = (base64String) => {
+    const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const rawData = window.atob(base64);
+    return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
+  };
+
+  const handleEnablePush = async () => {
+    if (!supabase || !userId) {
+      setPushStatus('Спочатку потрібно підключити Supabase.');
+      return;
+    }
+
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+      setPushStatus('Цей браузер не підтримує push-сповіщення.');
+      return;
+    }
+
+    const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
+    if (!vapidPublicKey) {
+      setPushStatus('Додайте VITE_VAPID_PUBLIC_KEY у .env.');
       return;
     }
 
     const permission = await Notification.requestPermission();
-    setNotificationPermission(permission);
-  };
-
-  const showServiceNotification = async (service) => {
-    const title = 'Час відповісти за служіння';
-    const body = `${service.title}: ${formatServiceDate(service.date)} о ${service.time}. Оберіть, будь ласка, свій варіант.`;
-    const options = {
-      body,
-      icon: '/icon.svg',
-      badge: '/icon.svg',
-      tag: `service-${service.id}`,
-      renotify: true
-    };
-
-    if ('serviceWorker' in navigator) {
-      const registration = await navigator.serviceWorker.ready;
-      registration.showNotification(title, options);
+    if (permission !== 'granted') {
+      setPushStatus('Сповіщення не дозволені в браузері.');
       return;
     }
 
-    new Notification(title, options);
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
+    });
+    const json = subscription.toJSON();
+
+    const { error } = await supabase
+      .from('push_subscriptions')
+      .upsert({
+        user_id: userId,
+        endpoint: json.endpoint,
+        p256dh: json.keys.p256dh,
+        auth: json.keys.auth,
+        updated_at: new Date().toISOString()
+      }, {
+        onConflict: 'endpoint'
+      });
+
+    setPushStatus(error ? `Помилка push: ${error.message}` : 'Push-сповіщення увімкнено.');
   };
 
-  const handleSaveService = (event) => {
+  const handleSaveService = async (event) => {
     event.preventDefault();
     if (!form.title.trim()) return;
 
@@ -333,10 +488,27 @@ function App() {
       note: form.note.trim() || 'Без опису',
       roles: normalizeLines(form.rolesText, serviceRolesFallback),
       isRecurring: form.isRecurring,
-      recurringParentId: form.recurringParentId || form.id || crypto.randomUUID(),
-      createdAt: form.createdAt || Date.now(),
-      notificationAt: form.notificationAt || getNotificationAt(form.isRecurring)
+      recurringParentId: form.recurringParentId || form.id || crypto.randomUUID()
     };
+
+    if (supabase) {
+      const { data, error } = await supabase
+        .from('services')
+        .upsert(toServicePayload(service))
+        .select()
+        .single();
+
+      if (error) {
+        setRemoteStatus(`Помилка збереження служіння: ${error.message}`);
+        return;
+      }
+
+      const savedService = fromServiceRow(data);
+      setSelectedServiceId(savedService.id);
+      setForm(createEmptyForm());
+      await loadRemoteData();
+      return;
+    }
 
     setServices((current) => {
       const next = form.id
@@ -369,13 +541,26 @@ function App() {
       note: service.note,
       rolesText: service.roles.join('\n'),
       isRecurring: service.isRecurring,
-      recurringParentId: service.recurringParentId,
-      createdAt: service.createdAt,
-      notificationAt: service.notificationAt
+      recurringParentId: service.recurringParentId
     });
   };
 
-  const handleDeleteService = (serviceId) => {
+  const handleDeleteService = async (serviceId) => {
+    if (supabase) {
+      const { error } = await supabase.from('services').delete().eq('id', serviceId);
+
+      if (error) {
+        setRemoteStatus(`Помилка видалення служіння: ${error.message}`);
+        return;
+      }
+
+      if (form.id === serviceId) {
+        setForm(createEmptyForm());
+      }
+      await loadRemoteData();
+      return;
+    }
+
     setServices((current) => {
       const next = current.filter((service) => service.id !== serviceId);
       setSelectedServiceId((currentSelectedId) => {
@@ -395,8 +580,30 @@ function App() {
     }
   };
 
-  const handleSaveResponseOptions = () => {
+  const handleSaveResponseOptions = async () => {
     const nextOptions = normalizeLines(responseOptionsText, defaultResponseOptions);
+
+    if (supabase) {
+      const { error: deleteError } = await supabase
+        .from('response_options')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000');
+
+      if (deleteError) {
+        setRemoteStatus(`Помилка оновлення варіантів: ${deleteError.message}`);
+        return;
+      }
+
+      const { error: insertError } = await supabase
+        .from('response_options')
+        .insert(nextOptions.map((label, index) => ({ label, position: index + 1 })));
+
+      if (insertError) {
+        setRemoteStatus(`Помилка оновлення варіантів: ${insertError.message}`);
+        return;
+      }
+    }
+
     const renamedOptions = new Map(responseOptions.map((option, index) => [option, nextOptions[index]]).filter(([, value]) => value));
     setResponseOptions(nextOptions);
     setResponseOptionsText(nextOptions.join('\n'));
@@ -409,8 +616,16 @@ function App() {
         Object.entries(roleResponses).forEach(([role, userResponses]) => {
           nextResponses[serviceId][role] = Object.fromEntries(
             Object.entries(userResponses)
-              .map(([name, value]) => [name, renamedOptions.get(value) ?? value])
-              .filter(([, value]) => allowedOptions.has(value))
+              .map(([name, entry]) => {
+                const nextValue = renamedOptions.get(getResponseValue(entry)) ?? getResponseValue(entry);
+                return [
+                  name,
+                  typeof entry === 'string'
+                    ? nextValue
+                    : { ...entry, value: nextValue }
+                ];
+              })
+              .filter(([, entry]) => allowedOptions.has(getResponseValue(entry)))
           );
         });
       });
@@ -419,7 +634,44 @@ function App() {
     });
   };
 
-  const handleAdminResponseChange = (serviceId, role, name, value) => {
+  const handleAdminResponseChange = async (serviceId, role, name, value, targetUserId = name) => {
+    if (supabase) {
+      if (value) {
+        const { error } = await supabase
+          .from('responses')
+          .upsert({
+            service_id: serviceId,
+            role,
+            user_id: targetUserId,
+            display_name: name,
+            value,
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'service_id,role,user_id'
+          });
+
+        if (error) {
+          setRemoteStatus(`Помилка редагування відповіді: ${error.message}`);
+          return;
+        }
+      } else {
+        const { error } = await supabase
+          .from('responses')
+          .delete()
+          .eq('service_id', serviceId)
+          .eq('role', role)
+          .eq('user_id', targetUserId);
+
+        if (error) {
+          setRemoteStatus(`Помилка видалення відповіді: ${error.message}`);
+          return;
+        }
+      }
+
+      await loadRemoteData();
+      return;
+    }
+
     setResponses((current) => {
       const roleResponses = ((current[serviceId] ?? {})[role] ?? {});
       const nextRoleResponses = { ...roleResponses };
@@ -440,14 +692,19 @@ function App() {
     });
   };
 
-  const handleAddAdminResponse = (serviceId, role) => {
+  const handleAddAdminResponse = async (serviceId, role) => {
     const key = `${serviceId}-${role}`;
     const draft = adminDrafts[key] ?? { name: '', value: responseOptions[0] ?? '' };
     const name = draft.name.trim();
 
     if (!name || !draft.value) return;
 
-    handleAdminResponseChange(serviceId, role, name, draft.value);
+    if (supabase) {
+      setRemoteStatus('Додавання відповіді вручну для Supabase потребує реального user_id користувача.');
+      return;
+    }
+
+    await handleAdminResponseChange(serviceId, role, name, draft.value);
     setAdminDrafts((current) => ({
       ...current,
       [key]: { name: '', value: responseOptions[0] ?? '' }
@@ -503,27 +760,15 @@ function App() {
               />
             </label>
             {!canVote ? <p className="field-hint">Введіть ім'я, щоб залишити відповідь.</p> : null}
-          </section>
-
-          <section className="panel compact-panel notification-panel">
-            <div>
-              <strong>Сповіщення</strong>
-              <p className="field-hint">
-                {notificationPermission === 'granted'
-                  ? 'Увімкнено. Нагадування прийдуть за правилами розкладу.'
-                  : 'Увімкніть, щоб отримувати нагадування проголосувати.'}
-              </p>
-            </div>
-            {notificationPermission === 'granted' ? null : (
-              <button
-                type="button"
-                className="secondary-button"
-                disabled={notificationPermission === 'unsupported' || notificationPermission === 'denied'}
-                onClick={requestNotifications}
-              >
-                {notificationPermission === 'denied' ? 'Заблоковано в браузері' : 'Увімкнути сповіщення'}
-              </button>
-            )}
+            {remoteStatus ? <p className="field-hint">{remoteStatus}</p> : null}
+            {supabase ? (
+              <>
+                <button type="button" className="secondary-button" onClick={handleEnablePush}>
+                  Увімкнути push-сповіщення
+                </button>
+                {pushStatus ? <p className="field-hint">{pushStatus}</p> : null}
+              </>
+            ) : null}
           </section>
 
           <section className="service-list">
@@ -555,7 +800,7 @@ function App() {
               <div className="roles-grid">
                 {selectedService.roles.map((role) => {
                   const roleResponses = serviceResponses[role] ?? {};
-                  const currentVote = roleResponses[normalizedParticipantName];
+                  const currentVote = getResponseValue(roleResponses[supabase ? userId : normalizedParticipantName]);
                   const counts = getResponseCounts(roleResponses, responseOptions);
                   const resultsKey = `${selectedService.id}-${role}`;
                   const hasVotes = Object.keys(roleResponses).length > 0;
@@ -761,12 +1006,18 @@ function App() {
                               ))}
                             </div>
                           ) : null}
-                          {Object.entries(roleResponses).map(([name, value]) => (
-                            <label key={name}>
-                              {name}
+                          {Object.entries(roleResponses).map(([key, entry]) => (
+                            <label key={key}>
+                              {getResponseName(key, entry)}
                               <select
-                                value={value}
-                                onChange={(event) => handleAdminResponseChange(service.id, role, name, event.target.value)}
+                                value={getResponseValue(entry)}
+                                onChange={(event) => handleAdminResponseChange(
+                                  service.id,
+                                  role,
+                                  getResponseName(key, entry),
+                                  event.target.value,
+                                  key
+                                )}
                               >
                                 <option value="">Видалити відповідь</option>
                                 {responseOptions.map((option) => (

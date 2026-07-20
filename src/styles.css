@@ -338,10 +338,6 @@ p {
   padding: 14px 16px;
 }
 
-.notification-panel {
-  align-items: start;
-}
-
 .inline-field,
 .checkbox-field {
   display: grid;
