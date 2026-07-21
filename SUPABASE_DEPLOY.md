@@ -73,8 +73,8 @@ This checks every minute:
 
 - ended one-time services are removed;
 - ended recurring services are removed and the next weekly service is created;
-- recurring next services get a push reminder after 24 hours;
-- one-time services get a push reminder as soon as the cron sees them.
+- recurring services are kept generated about a month ahead (each series is topped up week by week so occurrences never run out);
+- assigned users get a push reminder before their service, based on the lead time set by the admin in `/admin`.
 
 ## 6. Deploy frontend
 
@@ -88,6 +88,8 @@ Deploy `dist/` to any static hosting, for example Netlify, Vercel static hosting
 
 ## Notes
 
+- If you already have a project deployed, re-run `supabase/schema.sql` in the SQL Editor to add the new `app_settings` table (safe to re-run, uses `if not exists`), then redeploy `service-maintenance`.
+- The notification lead time (how long before a service the reminder push fires) is now a single setting controlled by the admin in `/admin`, not a per-user choice.
 - Realtime results work through Supabase Realtime on `services`, `response_options`, and `responses`.
 - Stable user identity uses Supabase Anonymous Auth. If the user clears browser data or changes device, Supabase will create a new anonymous user.
 - Current SQL policies allow any authenticated user to edit admin data. Before real use, add an `admins` table or role claim and restrict service/option editing to admins only.
