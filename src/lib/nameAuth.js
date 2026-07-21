@@ -27,7 +27,7 @@ const deriveCredentials = async (firstName, lastName) => {
   return {
     fullName,
     email: `u${hash.slice(0, 32)}@${EMAIL_DOMAIN}`,
-    password: `${hash}-vidmitka`
+    password: `${hash.slice(0, 60)}-vm`
   };
 };
 
