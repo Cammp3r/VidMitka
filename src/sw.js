@@ -5,9 +5,9 @@ precacheAndRoute(self.__WB_MANIFEST);
 
 self.addEventListener('push', (event) => {
   const payload = event.data?.json() ?? {};
-  const title = payload.title ?? 'VidMitka';
+  const title = payload.title ?? 'VidMitka: потрібна відповідь';
   const options = {
-    body: payload.body ?? 'Будь ласка, відкрийте застосунок.',
+    body: payload.body ?? 'Відкрийте розклад і відмітьте, чи зможете служити.',
     icon: '/icon.svg',
     badge: '/icon.svg',
     data: {

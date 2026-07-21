@@ -8,6 +8,8 @@ const toDateTime = (service: { service_date: string; service_time: string }) =>
 
 const toDateInput = (date: Date) => date.toISOString().slice(0, 10);
 
+const toReminderAt = (date: Date) => new Date(date.getTime() - dayMs).toISOString();
+
 const addDays = (date: Date, days: number) => {
   const next = new Date(date);
   next.setDate(next.getDate() + days);
@@ -64,7 +66,7 @@ serve(async (request) => {
             roles: service.roles,
             is_recurring: true,
             recurring_parent_id: parentId,
-            reminder_at: new Date(now.getTime() + dayMs).toISOString()
+            reminder_at: toReminderAt(nextStart)
           })
           .select('id')
           .single();
@@ -85,6 +87,25 @@ serve(async (request) => {
     }
   }
 
+  const { data: upcomingWithoutReminder, error: reminderBackfillError } = await adminClient
+    .from('services')
+    .select('id, service_date, service_time')
+    .is('reminder_at', null)
+    .gte('service_date', toDateInput(now));
+
+  if (reminderBackfillError) {
+    return Response.json({ error: reminderBackfillError.message }, { status: 500 });
+  }
+
+  for (const service of upcomingWithoutReminder ?? []) {
+    if (toDateTime(service) <= now) continue;
+
+    await adminClient
+      .from('services')
+      .update({ reminder_at: toReminderAt(toDateTime(service)) })
+      .eq('id', service.id);
+  }
+
   const { data: reminders, error: reminderError } = await adminClient
     .from('services')
     .select('*')
@@ -100,8 +121,8 @@ serve(async (request) => {
 
   for (const service of reminders ?? []) {
     push = await sendPushToAll({
-      title: 'Проголосуйте за служіння',
-      body: `${service.title}: ${service.service_date} о ${service.service_time.slice(0, 5)}.`,
+      title: 'VidMitka: відмітьте служіння',
+      body: `${service.title} ${service.service_date} о ${service.service_time.slice(0, 5)}. Потрібна ваша відповідь.`,
       url: '/',
       tag: `service-${service.id}`
     });

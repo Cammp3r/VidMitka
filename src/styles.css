@@ -60,6 +60,10 @@ button:disabled {
   margin: 0 auto;
 }
 
+.admin-shell {
+  max-width: 760px;
+}
+
 .hero,
 .panel,
 .service-card,
@@ -352,6 +356,10 @@ p {
   font-size: 0.9rem;
 }
 
+.error-text {
+  color: #ffb6c2;
+}
+
 .checkbox-field {
   grid-template-columns: auto 1fr;
   align-items: center;
@@ -365,6 +373,94 @@ p {
 .options-panel {
   border-top: 1px solid rgba(173, 197, 255, 0.12);
   padding-top: 16px;
+}
+
+.admin-login-panel {
+  align-self: start;
+}
+
+.small-button {
+  padding: 9px 12px;
+  width: fit-content;
+}
+
+.admin-settings {
+  display: grid;
+  gap: 16px;
+  border: 1px solid rgba(173, 197, 255, 0.12);
+  border-radius: 18px;
+  background: rgba(10, 19, 34, 0.42);
+  padding: 0;
+}
+
+.admin-settings summary {
+  list-style: none;
+  padding: 14px 16px;
+  color: #dbe7ff;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.admin-settings summary::-webkit-details-marker {
+  display: none;
+}
+
+.admin-settings summary::after {
+  content: '+';
+  float: right;
+  color: #9fd3ff;
+}
+
+.admin-settings[open] {
+  padding-bottom: 16px;
+}
+
+.admin-settings[open] summary {
+  border-bottom: 1px solid rgba(173, 197, 255, 0.12);
+  margin-bottom: 16px;
+}
+
+.admin-settings[open] summary::after {
+  content: '-';
+}
+
+.admin-settings .admin-form {
+  padding: 0 16px;
+}
+
+.admin-settings .options-panel {
+  margin: 0 16px;
+  padding: 16px 0 0;
+}
+
+.service-details {
+  border-top: 1px solid rgba(173, 197, 255, 0.12);
+  padding-top: 10px;
+}
+
+.service-details summary {
+  list-style: none;
+  color: #dbe7ff;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.service-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.service-details summary::after {
+  content: '+';
+  float: right;
+  color: #9fd3ff;
+}
+
+.service-details[open] summary {
+  margin-bottom: 12px;
+}
+
+.service-details[open] summary::after {
+  content: '-';
 }
 
 .mini-list {

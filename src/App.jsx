@@ -3,6 +3,7 @@ import { isSupabaseConfigured, supabase } from './lib/supabase';
 
 const serviceRolesFallback = ['Камера', 'Звук', 'Медіа'];
 const defaultResponseOptions = ['Можу бути', 'Не можу бути', 'Під питанням'];
+const dayMs = 24 * 60 * 60 * 1000;
 
 const initialServices = [
   {
@@ -49,6 +50,8 @@ const formatDateInput = (date) => {
 };
 
 const getServiceStart = (service) => new Date(`${service.date}T${service.time}`);
+
+const getReminderAt = (service) => new Date(getServiceStart(service).getTime() - dayMs).toISOString();
 
 const addDays = (date, days) => {
   const next = new Date(date);
@@ -101,7 +104,7 @@ const toServicePayload = (service) => ({
   roles: service.roles,
   is_recurring: service.isRecurring,
   recurring_parent_id: service.recurringParentId,
-  reminder_at: service.isRecurring ? null : new Date().toISOString(),
+  reminder_at: getReminderAt(service),
   reminder_sent_at: null
 });
 
@@ -197,7 +200,6 @@ const buildResponseMap = (rows) => {
 
 function App() {
   const [isDesktop, setIsDesktop] = useState(false);
-  const [mode, setMode] = useState('user');
   const [responses, setResponses] = useState({});
   const [services, setServices] = useState(() => cleanupServices(initialServices, {}).services);
   const [selectedServiceId, setSelectedServiceId] = useState(() => cleanupServices(initialServices, {}).services[0]?.id ?? '');
@@ -208,10 +210,16 @@ function App() {
   const [adminDrafts, setAdminDrafts] = useState({});
   const [expandedResults, setExpandedResults] = useState({});
   const [userId, setUserId] = useState('');
-  const [remoteStatus, setRemoteStatus] = useState(isSupabaseConfigured ? 'Підключення до Supabase...' : '');
+  const [remoteStatus, setRemoteStatus] = useState(isSupabaseConfigured ? 'Підключення даних...' : '');
   const [pushStatus, setPushStatus] = useState('');
+  const [adminSettingsOpen, setAdminSettingsOpen] = useState(false);
+  const [adminPasswordInput, setAdminPasswordInput] = useState('');
+  const [adminError, setAdminError] = useState('');
+  const [isAdminUnlocked, setIsAdminUnlocked] = useState(() => window.localStorage.getItem('vidmitka-admin') === 'unlocked');
   const responsesRef = useRef(responses);
   const participantNameRef = useRef('');
+  const isAdminPage = window.location.pathname.replace(/\/$/, '') === '/admin';
+  const adminPassword = import.meta.env.VITE_ADMIN_PASSWORD ?? '';
 
   useEffect(() => {
     responsesRef.current = responses;
@@ -266,7 +274,7 @@ function App() {
         if (!active || !session?.user) return;
 
         setUserId(session.user.id);
-        setRemoteStatus('Supabase підключено');
+        setRemoteStatus('Дані підключені');
         const { data: profile } = await supabase
           .from('profiles')
           .select('display_name')
@@ -279,7 +287,7 @@ function App() {
         }
         await loadRemoteData();
       } catch (error) {
-        setRemoteStatus(`Помилка Supabase: ${error.message}`);
+        setRemoteStatus(`Не вдалося підключити дані: ${error.message}`);
       }
     };
 
@@ -335,6 +343,12 @@ function App() {
   const isEditing = Boolean(form.id);
   const normalizedParticipantName = participantName.trim();
   const canVote = Boolean(normalizedParticipantName && (!supabase || userId));
+
+  useEffect(() => {
+    if (isEditing) {
+      setAdminSettingsOpen(true);
+    }
+  }, [isEditing]);
 
   const upsertProfile = async (displayName) => {
     if (!supabase || !userId || !displayName) return;
@@ -433,18 +447,18 @@ function App() {
 
   const handleEnablePush = async () => {
     if (!supabase || !userId) {
-      setPushStatus('Спочатку потрібно підключити Supabase.');
+      setPushStatus('Зачекайте кілька секунд і спробуйте ще раз.');
       return;
     }
 
     if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
-      setPushStatus('Цей браузер не підтримує push-сповіщення.');
+      setPushStatus('Цей браузер не підтримує сповіщення.');
       return;
     }
 
     const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
     if (!vapidPublicKey) {
-      setPushStatus('Додайте VITE_VAPID_PUBLIC_KEY у .env.');
+      setPushStatus('Сповіщення ще не налаштовані.');
       return;
     }
 
@@ -473,7 +487,7 @@ function App() {
         onConflict: 'endpoint'
       });
 
-    setPushStatus(error ? `Помилка push: ${error.message}` : 'Push-сповіщення увімкнено.');
+    setPushStatus(error ? 'Не вдалося увімкнути сповіщення. Спробуйте пізніше.' : 'Сповіщення увімкнено.');
   };
 
   const handleSaveService = async (event) => {
@@ -499,7 +513,7 @@ function App() {
         .single();
 
       if (error) {
-        setRemoteStatus(`Помилка збереження служіння: ${error.message}`);
+        setRemoteStatus(`Не вдалося зберегти служіння: ${error.message}`);
         return;
       }
 
@@ -550,7 +564,7 @@ function App() {
       const { error } = await supabase.from('services').delete().eq('id', serviceId);
 
       if (error) {
-        setRemoteStatus(`Помилка видалення служіння: ${error.message}`);
+        setRemoteStatus(`Не вдалося видалити служіння: ${error.message}`);
         return;
       }
 
@@ -590,7 +604,7 @@ function App() {
         .neq('id', '00000000-0000-0000-0000-000000000000');
 
       if (deleteError) {
-        setRemoteStatus(`Помилка оновлення варіантів: ${deleteError.message}`);
+        setRemoteStatus(`Не вдалося оновити варіанти: ${deleteError.message}`);
         return;
       }
 
@@ -599,7 +613,7 @@ function App() {
         .insert(nextOptions.map((label, index) => ({ label, position: index + 1 })));
 
       if (insertError) {
-        setRemoteStatus(`Помилка оновлення варіантів: ${insertError.message}`);
+        setRemoteStatus(`Не вдалося оновити варіанти: ${insertError.message}`);
         return;
       }
     }
@@ -651,7 +665,7 @@ function App() {
           });
 
         if (error) {
-          setRemoteStatus(`Помилка редагування відповіді: ${error.message}`);
+          setRemoteStatus(`Не вдалося змінити відповідь: ${error.message}`);
           return;
         }
       } else {
@@ -663,7 +677,7 @@ function App() {
           .eq('user_id', targetUserId);
 
         if (error) {
-          setRemoteStatus(`Помилка видалення відповіді: ${error.message}`);
+          setRemoteStatus(`Не вдалося видалити відповідь: ${error.message}`);
           return;
         }
       }
@@ -700,7 +714,7 @@ function App() {
     if (!name || !draft.value) return;
 
     if (supabase) {
-      setRemoteStatus('Додавання відповіді вручну для Supabase потребує реального user_id користувача.');
+      setRemoteStatus('Ручне додавання відповіді доступне тільки в локальному режимі.');
       return;
     }
 
@@ -719,14 +733,38 @@ function App() {
     }));
   };
 
-  if (isDesktop) {
+  const handleAdminLogin = (event) => {
+    event.preventDefault();
+
+    if (!adminPassword) {
+      setAdminError('Пароль адміністратора ще не налаштований.');
+      return;
+    }
+
+    if (adminPasswordInput === adminPassword) {
+      window.localStorage.setItem('vidmitka-admin', 'unlocked');
+      setIsAdminUnlocked(true);
+      setAdminPasswordInput('');
+      setAdminError('');
+      return;
+    }
+
+    setAdminError('Невірний пароль.');
+  };
+
+  const handleAdminLogout = () => {
+    window.localStorage.removeItem('vidmitka-admin');
+    setIsAdminUnlocked(false);
+  };
+
+  if (isDesktop && !isAdminPage) {
     return (
       <main className="desktop-blocker">
         <div className="desktop-card">
           <span className="badge">Лише для телефонів</span>
           <h1>Відкрий застосунок на смартфоні</h1>
           <p>
-            Цей інтерфейс розрахований на мобільний екран і встановлення на головний екран як PWA.
+            Цей інтерфейс розрахований на мобільний екран і встановлення на головний екран як застосунок.
           </p>
         </div>
       </main>
@@ -734,20 +772,15 @@ function App() {
   }
 
   return (
-    <main className="shell">
+    <main className={isAdminPage ? 'shell admin-shell' : 'shell'}>
       <section className="hero">
         <div>
-          <span className="eyebrow">VidMitka PWA</span>
-          <h1>Розклад служінь і відповіді команди в одному застосунку</h1>
+          <span className="eyebrow">VidMitka</span>
+          <h1>Розклад служінь і відповіді команди</h1>
         </div>
       </section>
 
-      <section className="mode-switcher" aria-label="Режим застосунку">
-        <button className={mode === 'user' ? 'active' : ''} onClick={() => setMode('user')}>Служитель</button>
-        <button className={mode === 'admin' ? 'active' : ''} onClick={() => setMode('admin')}>Адмін</button>
-      </section>
-
-      {mode === 'user' ? (
+      {!isAdminPage ? (
         <>
           <section className="panel compact-panel">
             <label className="inline-field">
@@ -760,11 +793,10 @@ function App() {
               />
             </label>
             {!canVote ? <p className="field-hint">Введіть ім'я, щоб залишити відповідь.</p> : null}
-            {remoteStatus ? <p className="field-hint">{remoteStatus}</p> : null}
             {supabase ? (
               <>
                 <button type="button" className="secondary-button" onClick={handleEnablePush}>
-                  Увімкнути push-сповіщення
+                  Увімкнути сповіщення
                 </button>
                 {pushStatus ? <p className="field-hint">{pushStatus}</p> : null}
               </>
@@ -858,96 +890,130 @@ function App() {
           ) : (
             <section className="panel">
               <h2>Розклад порожній</h2>
-              <p className="muted">Адмін може додати перше служіння в розділі керування.</p>
+              <p className="muted">Нове служіння з'явиться тут, коли його додадуть у розклад.</p>
             </section>
           )}
         </>
+      ) : !isAdminUnlocked ? (
+        <section className="panel admin-login-panel">
+          <div className="panel-head">
+            <div>
+              <span className="eyebrow">Адмін-панель</span>
+              <h2>Вхід для адміністратора</h2>
+            </div>
+          </div>
+          <form className="admin-form" onSubmit={handleAdminLogin}>
+            <label>
+              Пароль
+              <input
+                type="password"
+                autoComplete="current-password"
+                value={adminPasswordInput}
+                onChange={(event) => setAdminPasswordInput(event.target.value)}
+              />
+            </label>
+            {adminError ? <p className="field-hint error-text">{adminError}</p> : null}
+            <button className="submit-button" type="submit">Увійти</button>
+          </form>
+        </section>
       ) : (
         <section className="panel">
           <div className="panel-head">
             <div>
               <span className="eyebrow">Адмін-панель</span>
-              <h2>{isEditing ? 'Редагувати служіння' : 'Створити служіння'}</h2>
+              <h2>Керування розкладом</h2>
             </div>
-          </div>
-
-          <form className="admin-form" onSubmit={handleSaveService}>
-            <label>
-              Дата
-              <input
-                type="date"
-                value={form.date}
-                onChange={(event) => setForm({ ...form, date: event.target.value })}
-              />
-            </label>
-            <label>
-              Час
-              <input
-                type="time"
-                value={form.time}
-                onChange={(event) => setForm({ ...form, time: event.target.value })}
-              />
-            </label>
-            <label>
-              Назва
-              <input
-                type="text"
-                placeholder="Наприклад: молодіжне служіння"
-                value={form.title}
-                onChange={(event) => setForm({ ...form, title: event.target.value })}
-              />
-            </label>
-            <label>
-              Опис
-              <textarea
-                rows="3"
-                placeholder="Коротко про служіння"
-                value={form.note}
-                onChange={(event) => setForm({ ...form, note: event.target.value })}
-              />
-            </label>
-            <label>
-              Служіння команди
-              <textarea
-                rows="4"
-                placeholder="Кожна роль з нового рядка"
-                value={form.rolesText}
-                onChange={(event) => setForm({ ...form, rolesText: event.target.value })}
-              />
-            </label>
-            <label className="checkbox-field">
-              <input
-                type="checkbox"
-                checked={form.isRecurring}
-                onChange={(event) => setForm({ ...form, isRecurring: event.target.checked })}
-              />
-              Регулярне служіння щотижня
-            </label>
-
-            <button className="submit-button" type="submit">
-              {isEditing ? 'Зберегти зміни' : 'Додати в розклад'}
+            <button type="button" className="secondary-button small-button" onClick={handleAdminLogout}>
+              Вийти
             </button>
-            {isEditing ? (
-              <button className="secondary-button" type="button" onClick={() => setForm(createEmptyForm())}>
-                Скасувати редагування
+          </div>
+          {remoteStatus ? <p className="field-hint">{remoteStatus}</p> : null}
+
+          <details
+            className="admin-settings"
+            open={adminSettingsOpen}
+            onToggle={(event) => setAdminSettingsOpen(event.currentTarget.open)}
+          >
+            <summary>{isEditing ? 'Редагування служіння' : 'Налаштування служінь'}</summary>
+
+            <form className="admin-form" onSubmit={handleSaveService}>
+              <label>
+                Дата
+                <input
+                  type="date"
+                  value={form.date}
+                  onChange={(event) => setForm({ ...form, date: event.target.value })}
+                />
+              </label>
+              <label>
+                Час
+                <input
+                  type="time"
+                  value={form.time}
+                  onChange={(event) => setForm({ ...form, time: event.target.value })}
+                />
+              </label>
+              <label>
+                Назва
+                <input
+                  type="text"
+                  placeholder="Наприклад: молодіжне служіння"
+                  value={form.title}
+                  onChange={(event) => setForm({ ...form, title: event.target.value })}
+                />
+              </label>
+              <label>
+                Опис
+                <textarea
+                  rows="3"
+                  placeholder="Коротко про служіння"
+                  value={form.note}
+                  onChange={(event) => setForm({ ...form, note: event.target.value })}
+                />
+              </label>
+              <label>
+                Служіння команди
+                <textarea
+                  rows="4"
+                  placeholder="Кожна роль з нового рядка"
+                  value={form.rolesText}
+                  onChange={(event) => setForm({ ...form, rolesText: event.target.value })}
+                />
+              </label>
+              <label className="checkbox-field">
+                <input
+                  type="checkbox"
+                  checked={form.isRecurring}
+                  onChange={(event) => setForm({ ...form, isRecurring: event.target.checked })}
+                />
+                Регулярне служіння щотижня
+              </label>
+
+              <button className="submit-button" type="submit">
+                {isEditing ? 'Зберегти зміни' : 'Додати в розклад'}
               </button>
-            ) : null}
-          </form>
+              {isEditing ? (
+                <button className="secondary-button" type="button" onClick={() => setForm(createEmptyForm())}>
+                  Скасувати редагування
+                </button>
+              ) : null}
+            </form>
 
-          <div className="admin-form options-panel">
-            <label>
-              Варіанти відповідей
-              <textarea
-                rows="4"
-                placeholder="Кожен варіант з нового рядка"
-                value={responseOptionsText}
-                onChange={(event) => setResponseOptionsText(event.target.value)}
-              />
-            </label>
-            <button className="secondary-button" type="button" onClick={handleSaveResponseOptions}>
-              Зберегти варіанти відповідей
-            </button>
-          </div>
+            <div className="admin-form options-panel">
+              <label>
+                Варіанти відповідей
+                <textarea
+                  rows="4"
+                  placeholder="Кожен варіант з нового рядка"
+                  value={responseOptionsText}
+                  onChange={(event) => setResponseOptionsText(event.target.value)}
+                />
+              </label>
+              <button className="secondary-button" type="button" onClick={handleSaveResponseOptions}>
+                Зберегти варіанти відповідей
+              </button>
+            </div>
+          </details>
 
           <div className="mini-list">
             {services.map((service) => (
@@ -966,95 +1032,98 @@ function App() {
                       Видалити
                     </button>
                   </div>
-                  <div className="response-editor">
-                    {service.roles.map((role) => {
-                      const roleResponses = (responses[service.id] ?? {})[role] ?? {};
-                      const key = `${service.id}-${role}`;
-                      const draft = adminDrafts[key] ?? { name: '', value: responseOptions[0] ?? '' };
-                      const resultsKey = `admin-${service.id}-${role}`;
+                  <details className="service-details">
+                    <summary>Голоси та відповіді</summary>
+                    <div className="response-editor">
+                      {service.roles.map((role) => {
+                        const roleResponses = (responses[service.id] ?? {})[role] ?? {};
+                        const key = `${service.id}-${role}`;
+                        const draft = adminDrafts[key] ?? { name: '', value: responseOptions[0] ?? '' };
+                        const resultsKey = `admin-${service.id}-${role}`;
 
-                      return (
-                        <div key={role} className="admin-role-responses">
-                          <strong>{role}</strong>
-                          <div className="count-row">
-                            {getResponseCounts(roleResponses, responseOptions).map(({ option, count }) => (
-                              <span key={option}>{option}: {count}</span>
-                            ))}
-                          </div>
-                          <button
-                            type="button"
-                            className="secondary-button"
-                            onClick={() => toggleResults(`admin-${service.id}`, role)}
-                          >
-                            {expandedResults[resultsKey] ? 'Сховати список' : 'Відкрити список голосів'}
-                          </button>
-                          {expandedResults[resultsKey] ? (
-                            <div className="results-list">
-                              {getGroupedResponses(roleResponses, responseOptions).map(({ option, names }) => (
-                                <div key={option} className="result-group">
-                                  <strong>{option}</strong>
-                                  {names.length ? (
-                                    <ul>
-                                      {names.map((name) => (
-                                        <li key={name}>{name}</li>
-                                      ))}
-                                    </ul>
-                                  ) : (
-                                    <p>Немає відповідей</p>
-                                  )}
-                                </div>
+                        return (
+                          <div key={role} className="admin-role-responses">
+                            <strong>{role}</strong>
+                            <div className="count-row">
+                              {getResponseCounts(roleResponses, responseOptions).map(({ option, count }) => (
+                                <span key={option}>{option}: {count}</span>
                               ))}
                             </div>
-                          ) : null}
-                          {Object.entries(roleResponses).map(([key, entry]) => (
-                            <label key={key}>
-                              {getResponseName(key, entry)}
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              onClick={() => toggleResults(`admin-${service.id}`, role)}
+                            >
+                              {expandedResults[resultsKey] ? 'Сховати список' : 'Відкрити список голосів'}
+                            </button>
+                            {expandedResults[resultsKey] ? (
+                              <div className="results-list">
+                                {getGroupedResponses(roleResponses, responseOptions).map(({ option, names }) => (
+                                  <div key={option} className="result-group">
+                                    <strong>{option}</strong>
+                                    {names.length ? (
+                                      <ul>
+                                        {names.map((name) => (
+                                          <li key={name}>{name}</li>
+                                        ))}
+                                      </ul>
+                                    ) : (
+                                      <p>Немає відповідей</p>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : null}
+                            {Object.entries(roleResponses).map(([key, entry]) => (
+                              <label key={key}>
+                                {getResponseName(key, entry)}
+                                <select
+                                  value={getResponseValue(entry)}
+                                  onChange={(event) => handleAdminResponseChange(
+                                    service.id,
+                                    role,
+                                    getResponseName(key, entry),
+                                    event.target.value,
+                                    key
+                                  )}
+                                >
+                                  <option value="">Видалити відповідь</option>
+                                  {responseOptions.map((option) => (
+                                    <option key={option} value={option}>{option}</option>
+                                  ))}
+                                </select>
+                              </label>
+                            ))}
+                            <div className="add-response-row">
+                              <input
+                                type="text"
+                                placeholder="Ім'я"
+                                value={draft.name}
+                                onChange={(event) => setAdminDrafts((current) => ({
+                                  ...current,
+                                  [key]: { ...draft, name: event.target.value }
+                                }))}
+                              />
                               <select
-                                value={getResponseValue(entry)}
-                                onChange={(event) => handleAdminResponseChange(
-                                  service.id,
-                                  role,
-                                  getResponseName(key, entry),
-                                  event.target.value,
-                                  key
-                                )}
+                                value={draft.value}
+                                onChange={(event) => setAdminDrafts((current) => ({
+                                  ...current,
+                                  [key]: { ...draft, value: event.target.value }
+                                }))}
                               >
-                                <option value="">Видалити відповідь</option>
                                 {responseOptions.map((option) => (
                                   <option key={option} value={option}>{option}</option>
                                 ))}
                               </select>
-                            </label>
-                          ))}
-                          <div className="add-response-row">
-                            <input
-                              type="text"
-                              placeholder="Ім'я"
-                              value={draft.name}
-                              onChange={(event) => setAdminDrafts((current) => ({
-                                ...current,
-                                [key]: { ...draft, name: event.target.value }
-                              }))}
-                            />
-                            <select
-                              value={draft.value}
-                              onChange={(event) => setAdminDrafts((current) => ({
-                                ...current,
-                                [key]: { ...draft, value: event.target.value }
-                              }))}
-                            >
-                              {responseOptions.map((option) => (
-                                <option key={option} value={option}>{option}</option>
-                              ))}
-                            </select>
-                            <button type="button" className="secondary-button" onClick={() => handleAddAdminResponse(service.id, role)}>
-                              Додати
-                            </button>
+                              <button type="button" className="secondary-button" onClick={() => handleAddAdminResponse(service.id, role)}>
+                                Додати
+                              </button>
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                        );
+                      })}
+                    </div>
+                  </details>
                 </div>
               </article>
             ))}

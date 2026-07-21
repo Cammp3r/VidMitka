@@ -12,8 +12,8 @@ serve(async (request) => {
 
   const payload = await request.json().catch(() => ({}));
   const result = await sendPushToAll({
-    title: payload.title ?? 'VidMitka',
-    body: payload.body ?? 'Будь ласка, проголосуйте за служіння.',
+    title: payload.title ?? 'VidMitka: потрібна відповідь',
+    body: payload.body ?? 'Відкрийте розклад і відмітьте, чи зможете служити.',
     url: payload.url ?? '/',
     tag: payload.tag ?? 'vidmitka-reminder'
   });
