@@ -425,6 +425,11 @@ p {
   padding: 14px 16px;
 }
 
+.name-auth {
+  display: grid;
+  gap: 12px;
+}
+
 .inline-field,
 .checkbox-field {
   display: grid;

@@ -62,8 +62,13 @@ function App() {
       {!isAdminPage ? (
         <>
           <ParticipantPanel
+            useAccounts={Boolean(supabase)}
+            isNamedAccount={schedule.isNamedAccount}
             participantName={schedule.participantName}
             onNameChange={schedule.changeParticipantName}
+            onRegister={schedule.registerAccount}
+            onLogin={schedule.loginAccount}
+            onLogout={schedule.logoutAccount}
             canVote={schedule.canVote}
             showPushToggle={Boolean(supabase)}
             pushSubscribed={push.subscribed}

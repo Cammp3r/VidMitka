@@ -14,6 +14,7 @@ import {
   toServicePayload
 } from '../lib/serviceUtils';
 import { buildResponseMap, getResponseValue } from '../lib/responseUtils';
+import { loginByName, registerByName } from '../lib/nameAuth';
 
 const GROUPING_REFRESH_MS = 5 * 60 * 1000;
 const NOTIFICATION_SETTINGS_ID = 1;
@@ -33,6 +34,7 @@ export const useScheduleData = () => {
   const [profiles, setProfiles] = useState([]);
   const [notificationOffset, setNotificationOffset] = useState(defaultNotificationOffset);
   const [userId, setUserId] = useState('');
+  const [isNamedAccount, setIsNamedAccount] = useState(false);
   const [remoteStatus, setRemoteStatus] = useState(isSupabaseConfigured ? 'Підключення даних...' : '');
   const [now, setNow] = useState(() => new Date());
 
@@ -101,38 +103,65 @@ export const useScheduleData = () => {
 
     let active = true;
 
-    const bootSupabase = async () => {
+    const syncSession = async (session) => {
+      if (!active) return;
+
+      if (!session?.user) {
+        setUserId('');
+        setParticipantName('');
+        participantNameRef.current = '';
+        setIsNamedAccount(false);
+        return;
+      }
+
+      setUserId(session.user.id);
+      setRemoteStatus('Дані підключені');
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('display_name, first_name, last_name')
+        .eq('user_id', session.user.id)
+        .maybeSingle();
+
+      if (!active) return;
+
+      if (profile?.first_name && profile?.last_name) {
+        setParticipantName(profile.display_name);
+        participantNameRef.current = profile.display_name;
+        setIsNamedAccount(true);
+      } else {
+        setParticipantName('');
+        participantNameRef.current = '';
+        setIsNamedAccount(false);
+      }
+    };
+
+    const ensureSession = async () => {
       try {
         const { data: sessionData } = await supabase.auth.getSession();
-        let session = sessionData.session;
 
-        if (!session) {
-          const { data, error } = await supabase.auth.signInAnonymously();
-          if (error) throw error;
-          session = data.session;
+        if (sessionData.session) {
+          await syncSession(sessionData.session);
+          await loadRemoteData();
+          return;
         }
 
-        if (!active || !session?.user) return;
-
-        setUserId(session.user.id);
-        setRemoteStatus('Дані підключені');
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('display_name')
-          .eq('user_id', session.user.id)
-          .maybeSingle();
-
-        if (profile?.display_name) {
-          setParticipantName(profile.display_name);
-          participantNameRef.current = profile.display_name;
-        }
-        await loadRemoteData();
+        const { error } = await supabase.auth.signInAnonymously();
+        if (error) throw error;
       } catch (error) {
         setRemoteStatus(`Не вдалося підключити дані: ${error.message}`);
       }
     };
 
-    bootSupabase();
+    ensureSession();
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!active || event === 'INITIAL_SESSION') return;
+
+      syncSession(session).then(() => {
+        if (active) loadRemoteData();
+      });
+    });
 
     const channel = supabase
       .channel('vidmitka-db')
@@ -146,6 +175,7 @@ export const useScheduleData = () => {
 
     return () => {
       active = false;
+      authListener.subscription.unsubscribe();
       supabase.removeChannel(channel);
     };
   }, []);
@@ -178,7 +208,7 @@ export const useScheduleData = () => {
   const serviceWeekGroups = useMemo(() => groupServicesByWeek(services, now), [services, now]);
 
   const normalizedParticipantName = participantName.trim();
-  const canVote = Boolean(normalizedParticipantName && (!supabase || userId));
+  const canVote = Boolean(normalizedParticipantName && (!supabase || (userId && isNamedAccount)));
   const voterKey = supabase ? userId : normalizedParticipantName;
 
   const upsertProfile = async (displayName) => {
@@ -217,6 +247,16 @@ export const useScheduleData = () => {
 
       return nextResponses;
     });
+  };
+
+  const registerAccount = async (firstName, lastName) => registerByName(firstName, lastName);
+
+  const loginAccount = async (firstName, lastName) => loginByName(firstName, lastName);
+
+  const logoutAccount = async () => {
+    if (!supabase) return;
+    await supabase.auth.signOut();
+    await supabase.auth.signInAnonymously();
   };
 
   const changeParticipantName = (value) => {
@@ -563,6 +603,10 @@ export const useScheduleData = () => {
     normalizedParticipantName,
     voterKey,
     userId,
+    isNamedAccount,
+    registerAccount,
+    loginAccount,
+    logoutAccount,
     canVote,
     remoteStatus,
     vote,

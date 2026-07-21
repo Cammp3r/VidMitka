@@ -10,6 +10,16 @@ create table if not exists public.profiles (
 alter table public.profiles
 add column if not exists notification_offset_minutes integer not null default 1440;
 
+alter table public.profiles
+add column if not exists first_name text;
+
+alter table public.profiles
+add column if not exists last_name text;
+
+create unique index if not exists profiles_full_name_unique_idx
+on public.profiles (lower(trim(first_name)), lower(trim(last_name)))
+where first_name is not null and last_name is not null;
+
 create table if not exists public.services (
   id uuid primary key default gen_random_uuid(),
   service_date date not null,
