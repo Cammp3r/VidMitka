@@ -31,8 +31,12 @@ create table if not exists public.services (
   recurring_parent_id uuid,
   reminder_at timestamptz,
   reminder_sent_at timestamptz,
+  vote_reminder_sent_at timestamptz,
   created_at timestamptz not null default now()
 );
+
+alter table public.services
+add column if not exists vote_reminder_sent_at timestamptz;
 
 create unique index if not exists services_recurring_slot_idx
 on public.services (recurring_parent_id, service_date, service_time)

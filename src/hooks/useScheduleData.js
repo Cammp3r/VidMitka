@@ -36,6 +36,7 @@ export const useScheduleData = () => {
   const [userId, setUserId] = useState('');
   const [isNamedAccount, setIsNamedAccount] = useState(false);
   const [remoteStatus, setRemoteStatus] = useState(isSupabaseConfigured ? 'Підключення даних...' : '');
+  const [testPushStatus, setTestPushStatus] = useState('');
   const [now, setNow] = useState(() => new Date());
 
   const responsesRef = useRef(responses);
@@ -537,6 +538,44 @@ export const useScheduleData = () => {
     });
   };
 
+  const sendTestPush = async (profileId) => {
+    if (!supabase || !adminPassword) return;
+
+    const profile = profiles.find((item) => item.user_id === profileId);
+    if (!profile) {
+      setTestPushStatus('Оберіть користувача.');
+      return;
+    }
+
+    setTestPushStatus('Надсилання...');
+
+    const { data, error } = await supabase.functions.invoke('send-push', {
+      body: {
+        userIds: [profileId],
+        title: 'VidMitka: тестове сповіщення',
+        body: `Це тестове сповіщення для ${profile.display_name}. Якщо ви його бачите — push працює.`,
+        url: '/',
+        tag: 'test-push'
+      },
+      headers: {
+        'x-admin-password': adminPassword
+      }
+    });
+
+    if (error) {
+      setTestPushStatus(`Помилка надсилання: ${error.message}`);
+      return;
+    }
+
+    if (data?.sent > 0) {
+      setTestPushStatus(`Надіслано ${profile.display_name} (${data.sent}).`);
+    } else if (data?.failed > 0) {
+      setTestPushStatus(`Не вдалося доставити (${data.failed}). Можливо, у користувача не увімкнені сповіщення.`);
+    } else {
+      setTestPushStatus(`У ${profile.display_name} немає активної push-підписки.`);
+    }
+  };
+
   const assignUser = async (service, role, profileId) => {
     if (!supabase) {
       setRemoteStatus('Призначення акаунтів доступне після підключення Supabase.');
@@ -615,6 +654,8 @@ export const useScheduleData = () => {
     saveResponseOptions,
     adminResponseChange,
     addAdminResponse,
-    assignUser
+    assignUser,
+    sendTestPush,
+    testPushStatus
   };
 };

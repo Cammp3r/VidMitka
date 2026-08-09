@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { notificationOffsetOptions } from '../lib/constants';
 
 export function AdminServiceForm({
@@ -12,8 +13,12 @@ export function AdminServiceForm({
   onResponseOptionsTextChange,
   onSaveResponseOptions,
   notificationOffset,
-  onNotificationOffsetChange
+  onNotificationOffsetChange,
+  profiles,
+  onSendTestPush,
+  testPushStatus
 }) {
+  const [testPushUserId, setTestPushUserId] = useState('');
   return (
     <details
       className="admin-settings"
@@ -113,6 +118,34 @@ export function AdminServiceForm({
           </select>
         </label>
       </div>
+
+      {profiles?.length ? (
+        <div className="admin-form options-panel">
+          <label>
+            Тестове сповіщення
+            <select
+              value={testPushUserId}
+              onChange={(event) => setTestPushUserId(event.target.value)}
+            >
+              <option value="">Оберіть користувача</option>
+              {profiles.map((profile) => (
+                <option key={profile.user_id} value={profile.user_id}>
+                  {profile.display_name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            className="secondary-button"
+            type="button"
+            disabled={!testPushUserId}
+            onClick={() => onSendTestPush(testPushUserId)}
+          >
+            Надіслати тестове сповіщення
+          </button>
+          {testPushStatus ? <p className="field-hint">{testPushStatus}</p> : null}
+        </div>
+      ) : null}
     </details>
   );
 }

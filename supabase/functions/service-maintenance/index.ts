@@ -1,5 +1,5 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
-import { adminClient, isAuthorizedRequest, sendPushToUsers } from '../_shared/push.ts';
+import { adminClient, isAuthorizedRequest, sendPushToAll, sendPushToUsers } from '../_shared/push.ts';
 
 const dayMs = 24 * 60 * 60 * 1000;
 const monthAheadMs = 30 * dayMs;
@@ -239,10 +239,55 @@ serve(async (request) => {
       .eq('id', assignment.id);
   }
 
+  // Separate from the per-assignment reminder above: nudges every registered user
+  // (everyone with a push subscription, whether or not they've voted) to go mark their
+  // availability for an upcoming service. Sent once per service, on the same lead time.
+  const { data: unvotedServices, error: voteReminderError } = await adminClient
+    .from('services')
+    .select('id, service_date, service_time, title')
+    .is('vote_reminder_sent_at', null)
+    .order('service_date')
+    .order('service_time');
+
+  if (voteReminderError) {
+    return Response.json({ error: voteReminderError.message }, { status: 500 });
+  }
+
+  let voteReminderCount = 0;
+  let votePush = { sent: 0, failed: 0 };
+
+  for (const service of unvotedServices ?? []) {
+    const serviceStart = toDateTime(service);
+    if (serviceStart <= now) continue;
+
+    const reminderAt = new Date(serviceStart.getTime() - offsetMinutes * 60 * 1000);
+    if (reminderAt > now) continue;
+
+    const result = await sendPushToAll({
+      title: 'VidMitka: не забудьте відмітитись',
+      body: `${service.title} ${service.service_date} о ${service.service_time.slice(0, 5)}. Позначте свою доступність у розкладі.`,
+      url: '/',
+      tag: `vote-reminder-${service.id}`
+    });
+
+    votePush = {
+      sent: votePush.sent + result.sent,
+      failed: votePush.failed + result.failed
+    };
+    voteReminderCount += 1;
+
+    await adminClient
+      .from('services')
+      .update({ vote_reminder_sent_at: now.toISOString() })
+      .eq('id', service.id);
+  }
+
   return Response.json({
     created,
     deleted,
     reminders: reminderCount,
-    push
+    push,
+    voteReminders: voteReminderCount,
+    votePush
   });
 });

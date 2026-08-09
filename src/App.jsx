@@ -125,6 +125,9 @@ function App() {
             onSaveResponseOptions={schedule.saveResponseOptions}
             notificationOffset={schedule.notificationOffset}
             onNotificationOffsetChange={schedule.changeNotificationOffset}
+            profiles={schedule.profiles}
+            onSendTestPush={schedule.sendTestPush}
+            testPushStatus={schedule.testPushStatus}
           />
 
           <AdminServiceList
