@@ -20,6 +20,14 @@ const vapidSubject = Deno.env.get('VAPID_SUBJECT') ?? 'mailto:admin@example.com'
 
 export const adminClient = createClient(supabaseUrl, serviceRoleKey);
 
+// Edge functions called directly from the browser (send-push, via supabase.functions.invoke)
+// need CORS headers, or the browser blocks the request before it even reaches the function.
+export const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-admin-password',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS'
+};
+
 webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey);
 
 export const isAuthorizedRequest = (request: Request) => {
