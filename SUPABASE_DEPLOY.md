@@ -88,7 +88,7 @@ Deploy `dist/` to any static hosting, for example Netlify, Vercel static hosting
 
 ## Notes
 
-- If you already have a project deployed, re-run `supabase/schema.sql` in the SQL Editor to add the new `app_settings` table (safe to re-run, uses `if not exists`), then redeploy `service-maintenance`.
+- If you already have a project deployed, re-run `supabase/schema.sql` in the SQL Editor, then redeploy the frontend. This applies the push-subscription policy that lets a browser endpoint move from an anonymous or previous account to the currently logged-in account.
 - The notification lead time (how long before a service the reminder push fires) is now a single setting controlled by the admin in `/admin`, not a per-user choice.
 - Realtime results work through Supabase Realtime on `services`, `response_options`, and `responses`.
 - Stable user identity uses Supabase Anonymous Auth. If the user clears browser data or changes device, Supabase will create a new anonymous user.

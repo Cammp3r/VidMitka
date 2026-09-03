@@ -177,10 +177,28 @@ with check (true);
 
 drop policy if exists "push subscriptions own" on public.push_subscriptions;
 create policy "push subscriptions own"
-on public.push_subscriptions for all
+on public.push_subscriptions for select
 to authenticated
-using (auth.uid() = user_id)
+using (auth.uid() = user_id);
+
+drop policy if exists "push subscriptions insert own" on public.push_subscriptions;
+create policy "push subscriptions insert own"
+on public.push_subscriptions for insert
+to authenticated
 with check (auth.uid() = user_id);
+
+drop policy if exists "push subscriptions update endpoint" on public.push_subscriptions;
+create policy "push subscriptions update endpoint"
+on public.push_subscriptions for update
+to authenticated
+using (true)
+with check (auth.uid() = user_id);
+
+drop policy if exists "push subscriptions delete own" on public.push_subscriptions;
+create policy "push subscriptions delete own"
+on public.push_subscriptions for delete
+to authenticated
+using (auth.uid() = user_id);
 
 drop policy if exists "app settings read authenticated" on public.app_settings;
 create policy "app settings read authenticated"

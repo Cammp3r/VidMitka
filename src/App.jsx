@@ -70,7 +70,7 @@ function App() {
             onLogin={schedule.loginAccount}
             onLogout={schedule.logoutAccount}
             canVote={schedule.canVote}
-            showPushToggle={Boolean(supabase)}
+            showPushToggle={Boolean(supabase) && schedule.isNamedAccount}
             pushSubscribed={push.subscribed}
             pushStatus={push.status}
             onTogglePush={push.subscribed ? push.disable : push.enable}

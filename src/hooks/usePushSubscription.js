@@ -16,21 +16,37 @@ export const usePushSubscription = (userId) => {
   const [subscribed, setSubscribed] = useState(false);
 
   useEffect(() => {
-    if (!isPushSupported()) return undefined;
+    if (!isPushSupported() || !userId || !supabase) {
+      setSubscribed(false);
+      return undefined;
+    }
 
     let active = true;
 
     navigator.serviceWorker.ready
       .then((registration) => registration.pushManager.getSubscription())
-      .then((subscription) => {
-        if (active) setSubscribed(Boolean(subscription));
+      .then(async (subscription) => {
+        if (!subscription) {
+          if (active) setSubscribed(false);
+          return;
+        }
+
+        const { data, error } = await supabase
+          .from('push_subscriptions')
+          .select('id')
+          .eq('endpoint', subscription.endpoint)
+          .maybeSingle();
+
+        if (active) setSubscribed(!error && Boolean(data));
       })
-      .catch(() => {});
+      .catch(() => {
+        if (active) setSubscribed(false);
+      });
 
     return () => {
       active = false;
     };
-  }, []);
+  }, [userId]);
 
   const enable = async () => {
     if (!supabase || !userId) {
@@ -55,32 +71,36 @@ export const usePushSubscription = (userId) => {
       return;
     }
 
-    const registration = await navigator.serviceWorker.ready;
-    const subscription = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
-    });
-    const json = subscription.toJSON();
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      let subscription = await registration.pushManager.getSubscription();
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
+        });
+      }
 
-    const { error } = await supabase
-      .from('push_subscriptions')
-      .upsert({
-        user_id: userId,
-        endpoint: json.endpoint,
-        p256dh: json.keys.p256dh,
-        auth: json.keys.auth,
-        updated_at: new Date().toISOString()
-      }, {
-        onConflict: 'endpoint'
-      });
+      const json = subscription.toJSON();
+      const { error } = await supabase
+        .from('push_subscriptions')
+        .upsert({
+          user_id: userId,
+          endpoint: json.endpoint,
+          p256dh: json.keys.p256dh,
+          auth: json.keys.auth,
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'endpoint'
+        });
 
-    if (error) {
+      if (error) throw error;
+
+      setSubscribed(true);
+      setStatus('Сповіщення увімкнено.');
+    } catch {
       setStatus('Не вдалося увімкнути сповіщення. Спробуйте пізніше.');
-      return;
     }
-
-    setSubscribed(true);
-    setStatus('Сповіщення увімкнено.');
   };
 
   const disable = async () => {
