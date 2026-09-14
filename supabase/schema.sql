@@ -16,6 +16,9 @@ add column if not exists first_name text;
 alter table public.profiles
 add column if not exists last_name text;
 
+alter table public.profiles
+add column if not exists preferred_role text;
+
 create unique index if not exists profiles_full_name_unique_idx
 on public.profiles (lower(trim(first_name)), lower(trim(last_name)))
 where first_name is not null and last_name is not null;

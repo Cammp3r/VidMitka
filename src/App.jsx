@@ -69,6 +69,9 @@ function App() {
             onRegister={schedule.registerAccount}
             onLogin={schedule.loginAccount}
             onLogout={schedule.logoutAccount}
+            roles={schedule.roles}
+            preferredRole={schedule.preferredRole}
+            onPreferredRoleChange={schedule.changePreferredRole}
             canVote={schedule.canVote}
             showPushToggle={Boolean(supabase) && schedule.isNamedAccount}
             pushSubscribed={push.subscribed}

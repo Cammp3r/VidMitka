@@ -8,6 +8,9 @@ export function ParticipantPanel({
   onRegister,
   onLogin,
   onLogout,
+  roles,
+  preferredRole,
+  onPreferredRoleChange,
   canVote,
   showPushToggle,
   pushSubscribed,
@@ -40,6 +43,14 @@ export function ParticipantPanel({
           />
         </label>
       )}
+      <label className="inline-field role-picker">
+        Моя роль на служінні
+        <select value={preferredRole} onChange={(event) => onPreferredRoleChange(event.target.value)} disabled={!canVote}>
+          <option value="">Не обирати роль</option>
+          {roles.map((role) => <option key={role} value={role}>{role}</option>)}
+        </select>
+        <span className="field-hint">Вибрана роль автоматично відмітить вас як «Можу бути» на найближчому служінні.</span>
+      </label>
       {!canVote ? (
         <p className="field-hint">
           {useAccounts

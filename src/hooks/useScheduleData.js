@@ -5,7 +5,7 @@ import {
   defaultResponseOptions,
   initialServices
 } from '../lib/constants';
-import { formatServiceDate, groupServicesByWeek, sortServices } from '../lib/dateUtils';
+import { formatServiceDate, getServiceStart, groupServicesByWeek, sortServices } from '../lib/dateUtils';
 import {
   buildAssignmentMap,
   cleanupServices,
@@ -18,6 +18,7 @@ import { loginByName, registerByName } from '../lib/nameAuth';
 
 const GROUPING_REFRESH_MS = 5 * 60 * 1000;
 const NOTIFICATION_SETTINGS_ID = 1;
+const PREFERRED_ROLE_STORAGE_KEY = 'vidmitka-preferred-role';
 
 // Owns all server/demo data for the app: services, responses, profiles, response options,
 // the notification offset, and the current participant's identity — plus every action that
@@ -29,6 +30,7 @@ export const useScheduleData = () => {
     () => cleanupServices(initialServices, {}).services[0]?.id ?? ''
   );
   const [participantName, setParticipantName] = useState('');
+  const [preferredRole, setPreferredRole] = useState(() => window.localStorage.getItem(PREFERRED_ROLE_STORAGE_KEY) ?? '');
   const [responseOptions, setResponseOptions] = useState(defaultResponseOptions);
   const [responseOptionsText, setResponseOptionsText] = useState(defaultResponseOptions.join('\n'));
   const [profiles, setProfiles] = useState([]);
@@ -120,7 +122,7 @@ export const useScheduleData = () => {
 
       const { data: profile } = await supabase
         .from('profiles')
-        .select('display_name, first_name, last_name')
+        .select('display_name, first_name, last_name, preferred_role')
         .eq('user_id', session.user.id)
         .maybeSingle();
 
@@ -129,10 +131,12 @@ export const useScheduleData = () => {
       if (profile?.first_name && profile?.last_name) {
         setParticipantName(profile.display_name);
         participantNameRef.current = profile.display_name;
+        setPreferredRole(profile.preferred_role ?? '');
         setIsNamedAccount(true);
       } else {
         setParticipantName('');
         participantNameRef.current = '';
+        setPreferredRole('');
         setIsNamedAccount(false);
       }
     };
@@ -293,11 +297,17 @@ export const useScheduleData = () => {
   const vote = async (role, value) => {
     if (!selectedService || !canVote) return;
 
+    return saveVote(selectedService, role, value);
+  };
+
+  const saveVote = async (service, role, value) => {
+    if (!service || !canVote) return;
+
     if (supabase) {
       const { error } = await supabase
         .from('responses')
         .upsert({
-          service_id: selectedService.id,
+          service_id: service.id,
           role,
           user_id: userId,
           display_name: normalizedParticipantName,
@@ -315,14 +325,52 @@ export const useScheduleData = () => {
 
     setResponses((current) => ({
       ...current,
-      [selectedService.id]: {
-        ...(current[selectedService.id] ?? {}),
+      [service.id]: {
+        ...(current[service.id] ?? {}),
         [role]: {
-          ...((current[selectedService.id] ?? {})[role] ?? {}),
+          ...((current[service.id] ?? {})[role] ?? {}),
           [voterKey]: supabase ? { displayName: normalizedParticipantName, value, userId } : value
         }
       }
     }));
+  };
+
+  const roles = useMemo(
+    () => [...new Set(services.flatMap((service) => service.roles))],
+    [services]
+  );
+
+  const changePreferredRole = async (role) => {
+    const nextRole = roles.includes(role) ? role : '';
+    setPreferredRole(nextRole);
+
+    if (supabase && userId) {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ preferred_role: nextRole || null, updated_at: new Date().toISOString() })
+        .eq('user_id', userId);
+
+      if (error) {
+        setRemoteStatus(`Не вдалося зберегти роль: ${error.message}`);
+        return;
+      }
+    } else if (!supabase) {
+      if (nextRole) window.localStorage.setItem(PREFERRED_ROLE_STORAGE_KEY, nextRole);
+      else window.localStorage.removeItem(PREFERRED_ROLE_STORAGE_KEY);
+    }
+
+    if (!nextRole || !canVote) return;
+
+    const availableResponse = responseOptions.includes('Можу бути')
+      ? 'Можу бути'
+      : responseOptions[0] ?? defaultResponseOptions[0];
+    const availableServices = sortServices(services).filter(
+      (service) => getServiceStart(service) > new Date() && service.roles.includes(nextRole)
+    );
+
+    await Promise.all(
+      availableServices.map((service) => saveVote(service, nextRole, availableResponse))
+    );
   };
 
   const saveService = async (service) => {
@@ -632,6 +680,8 @@ export const useScheduleData = () => {
     selectedService,
     responses,
     profiles,
+    roles,
+    preferredRole,
     responseOptions,
     responseOptionsText,
     setResponseOptionsText,
@@ -646,6 +696,7 @@ export const useScheduleData = () => {
     registerAccount,
     loginAccount,
     logoutAccount,
+    changePreferredRole,
     canVote,
     remoteStatus,
     vote,
